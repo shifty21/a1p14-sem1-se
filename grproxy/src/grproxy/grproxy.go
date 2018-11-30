@@ -38,7 +38,7 @@ func getGServers(w http.ResponseWriter, r *http.Request) {
 
 	if exists {
 		var gserve1 = getServerAddress("/01/gserve1", c)
-		fmt.Printf("calling : "+" : %s\n", string(gserve1)+"library")
+		fmt.Printf("calling : "+" : %s\n", string(gserve1)+"library"+"with req "+r.Method)
 		origin, _ := url.Parse(gserve1 + "library")
 
 		director := func(req *http.Request) {

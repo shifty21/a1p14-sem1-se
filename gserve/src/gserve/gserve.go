@@ -74,6 +74,7 @@ func registerToZookeeper() {
 		fmt.Printf("main|registerToZookeeper.node exists: %+v\n", exists)
 	}
 }
+
 func saveDataToLibrary(encodedJSON []byte) int {
 	var hbaseURL = "http://localhost:8080/se2:library/fakerow"
 	req, err := http.NewRequest("PUT", hbaseURL, bytes.NewBuffer(encodedJSON))
@@ -98,31 +99,27 @@ func saveDataToLibrary(encodedJSON []byte) int {
 }
 
 func getLibraryData(w http.ResponseWriter) {
-	fmt.Println("gserve1.main|getLibraryData")
 	var hbaseURL = "http://localhost:8080/se2:library/*"
 	req, err := http.NewRequest("GET", hbaseURL, nil)
 	if err != nil {
 		panic("Error While getting data from Hbase")
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		panic(err)
 	}
-
-	fmt.Println("response Status:", resp.StatusCode)
-
-	fmt.Printf("resp.Body : %v\n", resp.Body)
 	marshalledRows, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println("MarshalledRow: ", marshalledRows)
+	fmt.Printf("getLibraryData|marshalledEncodedRows %v\n", marshalledRows)
 	var encodedRowsType EncRowsType
 	json.Unmarshal(marshalledRows, &encodedRowsType)
-	fmt.Println("unmarshalled EncodedRowsType : ", encodedRowsType)
+	fmt.Printf("getLibraryData|unmarshalledData %v\n", encodedRowsType)
 	decodedRows, _ := encodedRowsType.decode()
-	fmt.Println("UnencodedRowsType: ", decodedRows)
+	fmt.Printf("getLibraryData|decoded data %v\n", decodedRows)
 	decodedJSON, _ := json.Marshal(decodedRows)
+	fmt.Println("getLibraryData|" + string(decodedJSON))
 	w.Write(decodedJSON)
 	defer resp.Body.Close()
 	return
