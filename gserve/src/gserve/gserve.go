@@ -15,117 +15,125 @@ import (
 func createRootNode(flags int32, acl []zk.ACL, c *zk.Conn) {
 	//check for root node
 	exists, stat, err := c.Exists("/01")
-	if err != nil {
-		panic("Error while checking for rootnode")
-	}
+	handleError("gserve.createRootNode|Error while checking for rootnode", err)
 	//create root node
 	if !exists {
 		path, err := c.Create("/01", []byte("root"), flags, acl)
-		if err != nil {
-			panic("Error while creating root node! Exiting program")
-		}
-		fmt.Printf("main|createRootNode.root node created at %+v \n", path)
+		handleError("gserve.createRootNode|Error while creating root node!", err)
+		fmt.Printf("gserve.createRootNode|Root node created at %+v \n", path)
 	} else {
-		fmt.Printf("main|createRootNode.root node exists: %+v %+v \n", exists, stat)
+		fmt.Printf("gserve.createRootNode|Root node exists: %+v %+v \n", exists, stat)
 	}
-
 }
 
 func createServerNode(flags int32, acl []zk.ACL, c *zk.Conn) {
 	//check for root node
 	exists, stat, err := c.Exists("/01/gserve1")
-	if err != nil {
-		panic("Error while fetching data for server node")
-	}
+	handleError("gserve.createServerNode|Error while fetching data for server node", err)
 	fmt.Printf("%+v\n", stat)
 	//create root node
 	if !exists {
 		path, err := c.Create("/01/gserve1", []byte("http://localhost:8081/"), flags, acl)
-		if err != nil {
-			panic("Error while registring gserve1 to zookeeper")
-		}
-		fmt.Printf("main.createServerNode.created the gserver node : %+v\n", path)
+		handleError("gserve.createServerNode|Error while registring gserve1 to zookeeper", err)
+		fmt.Printf("gserve.createServerNode|Created the gserver node : %+v\n", path)
 	} else {
-		fmt.Printf("main.createServerNode.server node exists %+v\n", stat)
+		fmt.Printf("gserve.createServerNode|Server node exists %+v\n", stat)
 	}
-
 }
 
 func registerToZookeeper() {
-	fmt.Printf("main|registerToZookeeper.register the gserver node address to zk\n")
-	// fmt.Printf("main|connectToZookeeper.Connect to zookeeper")
+	fmt.Printf("gserve.registerToZookeeper|Register the gserver node address to zk\n")
+
 	c, _, err := zk.Connect([]string{"127.0.0.1"}, time.Second)
-	if err != nil {
-		panic(err)
+	handleError("gserve.registerToZookeeper|While connecting to zk", err)
+
+	for c.State() != zk.StateHasSession {
+		fmt.Println("gserve.registerToZookeeper|waiting from zk server")
+		time.Sleep(100000000)
 	}
 	flags := int32(0)
 	acl := zk.WorldACL(zk.PermAll)
-	// exists, _ = checkForNodeAvailability(c)
-	fmt.Printf("main|checkForNodeAvailability.check if node is available or not")
+
+	fmt.Printf("gserve.registerToZookeeper|Check if node is available or not")
+
 	exists, stat, err := c.Exists("/01/gserve1")
-	if err != nil {
-		panic("Error while fetching data for gserve1")
-	}
-	fmt.Printf("main|checkForNodeAvailability.node exists: %+v %+v\n", exists, stat)
+	handleError("gserve.registerToZookeeper|While fetching data from zk ", err)
+	fmt.Printf("gserve.registerToZookeeper|Node exists: %+v %+v\n", exists, stat)
 	if exists != true {
 		createRootNode(flags, acl, c)
 		createServerNode(flags, acl, c)
 	} else {
-		fmt.Printf("main|registerToZookeeper.node exists: %+v\n", exists)
+		fmt.Printf("gserve.registerToZookeeper|node exists: %+v\n", exists)
 	}
 }
 
-func saveDataToLibrary(encodedJSON []byte) int {
+func saveDataToLibrary(encodedJSON []byte) {
 	var hbaseURL = "http://localhost:8080/se2:library/fakerow"
 	req, err := http.NewRequest("PUT", hbaseURL, bytes.NewBuffer(encodedJSON))
-	if err != nil {
-		panic("Error While posting data to Hbase")
-	}
+	handleError("gserve.saveDataToLibrary|Error while creating new http req", err)
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
-	}
+	handleError("gserve.saveDataToLibrary|Error while saving data to hbase", err)
 	defer resp.Body.Close()
 
-	fmt.Println("response Status:", resp.StatusCode)
-	body, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println("response Body:", string(body))
+	body, err := ioutil.ReadAll(resp.Body)
+	handleError("gserve.saveDataToLibrary|Error while reading data from response body", err)
+	fmt.Println("gserve.saveDataToLibrary|Response ", body)
+}
 
-	return resp.StatusCode
-
+func decodeDataFromHbase(encodedMarshalledRows []byte) []byte {
+	var encodedRowsType EncRowsType
+	err := json.Unmarshal(encodedMarshalledRows, &encodedRowsType)
+	handleError("gserve.decodeDatFromHbase|Error while unmarshalling data", err)
+	decodedRows, err := encodedRowsType.decode()
+	handleError("gserve.decodeDatFromHbase|Error while decoding rows", err)
+	decodedJSON, err := json.Marshal(decodedRows)
+	handleError("gserve.decodeDatFromHbase|Error while marshalling data", err)
+	fmt.Println("gserve.decodeDataFromHbase|decodedJSON: " + string(decodedJSON))
+	return decodedJSON
 }
 
 func getLibraryData(w http.ResponseWriter) {
 	var hbaseURL = "http://localhost:8080/se2:library/*"
 	req, err := http.NewRequest("GET", hbaseURL, nil)
-	if err != nil {
-		panic("Error While getting data from Hbase")
-	}
+	handleError("gserve.getLibraryData|Error while creating req", err)
 	req.Header.Set("Accept", "application/json")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	marshalledRows, _ := ioutil.ReadAll(resp.Body)
-	fmt.Printf("getLibraryData|marshalledEncodedRows %v\n", marshalledRows)
-	var encodedRowsType EncRowsType
-	json.Unmarshal(marshalledRows, &encodedRowsType)
-	fmt.Printf("getLibraryData|unmarshalledData %v\n", encodedRowsType)
-	decodedRows, _ := encodedRowsType.decode()
-	fmt.Printf("getLibraryData|decoded data %v\n", decodedRows)
-	decodedJSON, _ := json.Marshal(decodedRows)
-	fmt.Println("getLibraryData|" + string(decodedJSON))
+	handleError("gserve.getLibraryData|Error while getting data from hbase", err)
+	encodedMarshalledRows, err := ioutil.ReadAll(resp.Body)
+	handleError("gserve.getLibraryData|Error while reading data from response body", err)
+	decodedJSON := decodeDataFromHbase(encodedMarshalledRows)
+
 	w.Write(decodedJSON)
 	defer resp.Body.Close()
 	return
 }
 
-func handler(w http.ResponseWriter, r *http.Request) {
+func encodeDataForHbase(unencodedJSON []byte) []byte {
+	var unencodedRows RowsType
+	err := json.Unmarshal(unencodedJSON, &unencodedRows)
+	handleError("gserve.getLibraryData|Error while unmarshalling data", err)
+	fmt.Println("gserve.encodeDataForHbase|UnencodedJSON", string(unencodedJSON))
+	encodedRows := unencodedRows.encode()
+	encodedJSON, err := json.Marshal(encodedRows)
+	handleError("gserve.getLibraryData|Error while marshalling data", err)
+	fmt.Println("gserve.getLibraryData|Unencoded:", string(unencodedJSON))
+	fmt.Println("gserve.getLibraryData|Encoded:", string(encodedJSON))
+	return encodedJSON
+}
+
+func handleError(source string, err error) {
+	if err != nil {
+		fmt.Println("Error from : ", source)
+		panic(err)
+	}
+}
+
+func requestHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/library" {
 		http.Error(w, "Redirecting to home page!", http.StatusNotFound)
 		return
@@ -135,34 +143,20 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		getLibraryData(w)
 	case "PUT":
 		unencodedJSON, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			panic(err)
-		}
-		// convert JSON to Go objects
-		var unencodedRows RowsType
-		json.Unmarshal(unencodedJSON, &unencodedRows)
-		fmt.Println(string(unencodedJSON))
-		// encode fields in Go objects
-		encodedRows := unencodedRows.encode()
-		// convert encoded Go objects to JSON
-		encodedJSON, _ := json.Marshal(encodedRows)
-
-		println("unencoded:", string(unencodedJSON))
-		println("encoded:", string(encodedJSON))
+		handleError("gserve.requestHandler|Error while reading response data", err)
+		encodedJSON := encodeDataForHbase(unencodedJSON)
 		saveDataToLibrary(encodedJSON)
 
-		// w.WriteHeader(statusCode)
 	default:
 		http.Error(w, "Sorry, only GET and PUT methods are supported.", http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Sorry, only GET and PUT methods are supported.")
 	}
 }
 
 func main() {
 	registerToZookeeper()
 	// time.Sleep(time.Second * 10)
-	fmt.Println("Registered to zookeeper")
-	http.HandleFunc("/library", handler)
+	fmt.Println("gserve.main|Registered to zookeeper")
+	http.HandleFunc("/library", requestHandler)
 	log.Fatal(http.ListenAndServe(":8081", nil))
 
 }
