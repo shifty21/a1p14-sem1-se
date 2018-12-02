@@ -8,34 +8,21 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-func createRootNode(flags int32, acl []zk.ACL, c *zk.Conn) {
+func createServerNode(flags int32, acl []zk.ACL, c *zk.Conn, serverPath string) {
 	//check for root node
-	exists, stat, err := c.Exists("/01")
-	handleError("gserve.createRootNode|Error while checking for rootnode", err)
-	//create root node
-	if !exists {
-		path, err := c.Create("/01", []byte("root"), flags, acl)
-		handleError("gserve.createRootNode|Error while creating root node!", err)
-		fmt.Printf("gserve.createRootNode|Root node created at %+v \n", path)
-	} else {
-		fmt.Printf("gserve.createRootNode|Root node exists: %+v %+v \n", exists, stat)
-	}
-}
-
-func createServerNode(flags int32, acl []zk.ACL, c *zk.Conn) {
-	//check for root node
-	exists, stat, err := c.Exists("/01/gserve1")
+	exists, stat, err := c.Exists(serverPath)
 	handleError("gserve.createServerNode|Error while fetching data for server node", err)
 	fmt.Printf("%+v\n", stat)
 	//create root node
 	if !exists {
-		path, err := c.Create("/01/gserve1", []byte("http://localhost:8081/"), flags, acl)
+		path, err := c.Create(serverPath, []byte("http://localhost:8081/"), flags, acl)
 		handleError("gserve.createServerNode|Error while registring gserve1 to zookeeper", err)
 		fmt.Printf("gserve.createServerNode|Created the gserver node : %+v\n", path)
 	} else {
@@ -44,8 +31,9 @@ func createServerNode(flags int32, acl []zk.ACL, c *zk.Conn) {
 }
 
 func registerToZookeeper() {
-	fmt.Printf("gserve.registerToZookeeper|Register the gserver node address to zk\n")
-
+	server := os.Getenv("server")
+	fmt.Println("gserve.registerToZookeeper|Environment server " + server)
+	serverPath := "/" + server
 	c, _, err := zk.Connect([]string{"127.0.0.1"}, time.Second)
 	handleError("gserve.registerToZookeeper|While connecting to zk", err)
 
@@ -56,16 +44,15 @@ func registerToZookeeper() {
 	flags := int32(0)
 	acl := zk.WorldACL(zk.PermAll)
 
-	fmt.Printf("gserve.registerToZookeeper|Check if node is available or not")
+	fmt.Println("gserve.registerToZookeeper|Check if " + serverPath + " is available or not")
 
-	exists, stat, err := c.Exists("/01/gserve1")
+	exists, stat, err := c.Exists(serverPath)
 	handleError("gserve.registerToZookeeper|While fetching data from zk ", err)
-	fmt.Printf("gserve.registerToZookeeper|Node exists: %+v %+v\n", exists, stat)
-	if exists != true {
-		createRootNode(flags, acl, c)
-		createServerNode(flags, acl, c)
+	if !exists {
+		fmt.Println("gserve.RegisterToZookeeper|Node doesnt exists " + serverPath)
+		createServerNode(flags, acl, c, serverPath)
 	} else {
-		fmt.Printf("gserve.registerToZookeeper|node exists: %+v\n", exists)
+		fmt.Printf("gserve.registerToZookeeper|Node exists: %+v\n", stat)
 	}
 }
 
@@ -209,8 +196,7 @@ func requestHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	registerToZookeeper()
-	// time.Sleep(time.Second * 10)
-	fmt.Println("gserve.main|Registered to zookeeper")
+
 	http.HandleFunc("/library", requestHandler)
 	log.Fatal(http.ListenAndServe(":8081", nil))
 

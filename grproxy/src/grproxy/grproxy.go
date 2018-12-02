@@ -19,43 +19,51 @@ func handleError(source string, err error) {
 }
 
 func getServerAddress(path string, c *zk.Conn) string {
+
+	exists, _, err := c.Exists(path)
+	handleError("grproxy.getGServers|Error while fetching data for node", err)
+
+	if !exists {
+		fmt.Println("grproxy.getGServers|No Data found for " + path + " the server sleeping for 10 secs")
+		time.Sleep(10000000000)
+		getServerAddress(path, c)
+	}
 	data, _, err := c.Get(path)
-	handleError("Error while getting address for "+path, err)
-	fmt.Printf(path+" : %s\n", string(data))
+	handleError("grproxy.getServerAddress|Error while getting address for "+path, err)
+	fmt.Printf("grproxy.getGServers|getting path for "+path+" : %s\n", string(data))
 	return string(data)
+
 }
 
-func getGServers(w http.ResponseWriter, r *http.Request) {
+func getGServers() [2]string {
+
+	c, _, err := zk.Connect([]string{"127.0.0.1"}, time.Second)
+	handleError("grproxy.getGServers|Error while connecting to zk", err)
+	var servers [2]string
+	servers[0] = getServerAddress("/gserve1", c)
+	servers[1] = getServerAddress("/gserve2", c)
+	return servers
+}
+
+func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 	w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
 	if r.Method == "OPTIONS" {
 		return
 	}
-	c, _, err := zk.Connect([]string{"127.0.0.1"}, time.Second)
-	if err != nil {
-		panic(err)
-	}
-	exists, _, err := c.Exists("/01")
-	if err != nil {
-		panic("Error while fetching data for root node")
+	////////////////////
+	origin, _ := url.Parse("" + "library")
+
+	director := func(req *http.Request) {
+		req.Header.Add("X-Forwarded-Host", req.Host)
+		req.Header.Add("X-Origin-Host", origin.Host)
+		req.URL.Scheme = "http"
+		req.URL.Host = origin.Host
 	}
 
-	if exists {
-		var gserve1 = getServerAddress("/01/gserve1", c)
-		fmt.Printf("calling : "+" : %s\n", string(gserve1)+"library"+"with req "+r.Method)
-		origin, _ := url.Parse(gserve1 + "library")
-
-		director := func(req *http.Request) {
-			req.Header.Add("X-Forwarded-Host", req.Host)
-			req.Header.Add("X-Origin-Host", origin.Host)
-			req.URL.Scheme = "http"
-			req.URL.Host = origin.Host
-		}
-
-		proxy := &httputil.ReverseProxy{Director: director}
-		proxy.ServeHTTP(w, r)
-	}
+	proxy := &httputil.ReverseProxy{Director: director}
+	proxy.ServeHTTP(w, r)
 
 }
 func main() {
@@ -75,10 +83,10 @@ func main() {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 		proxy.ServeHTTP(w, r)
-		fmt.Printf("Redirecting to homepage")
+		fmt.Printf("grproxy.main|Redirecting to homepage")
 	})
-
-	http.HandleFunc("/library", getGServers)
+	getGServers()
+	http.HandleFunc("/library", proxyHandler)
 
 	log.Fatal(http.ListenAndServe(":9002", nil))
 }
