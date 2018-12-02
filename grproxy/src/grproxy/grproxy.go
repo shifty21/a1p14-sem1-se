@@ -11,11 +11,16 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
+func handleError(source string, err error) {
+	if err != nil {
+		fmt.Println("Error from : ", source)
+		panic(err)
+	}
+}
+
 func getServerAddress(path string, c *zk.Conn) string {
 	data, _, err := c.Get(path)
-	if err != nil {
-		panic("Error while getting address for " + path)
-	}
+	handleError("Error while getting address for "+path, err)
 	fmt.Printf(path+" : %s\n", string(data))
 	return string(data)
 }

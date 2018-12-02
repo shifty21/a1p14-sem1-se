@@ -116,6 +116,7 @@ func getLibraryData(w http.ResponseWriter) {
 	fmt.Printf("gserve.getLibraryData|pagedata %v\n", p)
 	tplFuncMap := make(template.FuncMap)
 	tplFuncMap["Split"] = Split
+	tplFuncMap["SplitKey"] = SplitKey
 	t := template.Must(template.New("library.tmpl").Funcs(tplFuncMap).ParseFiles("library.tmpl"))
 	handleError("gserve.getLibrary|unable to parse file", err)
 	t.Execute(w, p)
@@ -127,6 +128,12 @@ func getLibraryData(w http.ResponseWriter) {
 func Split(s string) string {
 	arr := strings.Split(s, ":")
 	return arr[1]
+}
+
+//SplitKey - splits the string on colon and gives the value
+func SplitKey(s string) string {
+	arr := strings.Split(s, ":")
+	return strings.Title(arr[0])
 }
 
 //{"Row":[{"key":"1","Cell":[{"column":"document:sample","$":"value:samplevalue","timestamp":1543701034821},

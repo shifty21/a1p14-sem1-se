@@ -10,11 +10,7 @@
       {{range .RowData}}
               <h3>{{.Key}}</h3>
                   {{range $index,$element := .Cell}}
-                    {{if eq $index 0}}
-                    <h4>Document</h4>
-                    {{else}}
-                    <h4>Metadata</h4>
-                    {{end}}
+                    <h4>{{SplitKey $element.Column}}</h4>
                     <div class="wrapper">
                                 <div class="wrapper">
                                   <div class="box">{{Split $element.Column}}</div>
