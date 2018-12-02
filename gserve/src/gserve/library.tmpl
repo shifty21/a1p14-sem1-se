@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>
+    {{.Title}}
+  </title>
+  <body>
+
+    <div name="library">
+      {{range .RowData}}
+              <h3>{{.Key}}</h3>
+                  {{range $index,$element := .Cell}}
+                    {{if eq $index 0}}
+                    <h4>Document</h4>
+                    {{else}}
+                    <h4>Metadata</h4>
+                    {{end}}
+                    <div class="wrapper">
+                                <div class="wrapper">
+                                  <div class="box">{{Split $element.Column}}</div>
+                                  <div class="box">{{Split $element.Value}}</div>
+                                </div>
+                      </div>
+                  {{end}}
+      {{end}}
+
+    </div>
+    <footer><i>{{.Author}}</i></footer>
+  </body>
+
+</html>
+<style>
+body {
+  margin: 40px;
+}
+
+.wrapper {
+  display: grid;
+  grid-template-columns: 200px 500px 500px;
+  grid-gap: 50px;
+  background-color: #fff;
+}
+
+.box {
+  border-radius: 5px;
+  padding: 20px;
+  font-size: 150%;
+}
+</style>
+<!--
+
+{"Row":[{"key":"1",
+"Cell":[{"column":"document:sample","$":"value:samplevalue","timestamp":1543701034821},
+{"column":"metadata:meta","$":"value:samplemeta","timestamp":1543701034821}]}]}
+ -->

@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/samuel/go-zookeeper/zk"
@@ -107,10 +109,56 @@ func getLibraryData(w http.ResponseWriter) {
 	encodedMarshalledRows, err := ioutil.ReadAll(resp.Body)
 	handleError("gserve.getLibraryData|Error while reading data from response body", err)
 	decodedJSON := decodeDataFromHbase(encodedMarshalledRows)
-
-	w.Write(decodedJSON)
+	fmt.Println("gserve.getLibraryData|decodedJSON: ", decodedJSON)
+	//load data into page and send back
+	// p, _ := loadPage(string(decodedJSON))
+	p := loadPage(decodedJSON)
+	fmt.Printf("gserve.getLibraryData|pagedata %v\n", p)
+	tplFuncMap := make(template.FuncMap)
+	tplFuncMap["Split"] = Split
+	t := template.Must(template.New("library.tmpl").Funcs(tplFuncMap).ParseFiles("library.tmpl"))
+	handleError("gserve.getLibrary|unable to parse file", err)
+	t.Execute(w, p)
 	defer resp.Body.Close()
 	return
+}
+
+//Split - splits the string on colon and gives the value
+func Split(s string) string {
+	arr := strings.Split(s, ":")
+	return arr[1]
+}
+
+//{"Row":[{"key":"1","Cell":[{"column":"document:sample","$":"value:samplevalue","timestamp":1543701034821},
+//{"column":"metadata:meta","$":"value:samplemeta","timestamp":1543701034821}]}]}
+func loadPage(decodedJSON []byte) *Data {
+	var data Data
+	fmt.Println("Value of decodedJSON : ", decodedJSON)
+	json.Unmarshal(decodedJSON, &data)
+	fmt.Println("Value of data ", data.RowData[0].Key)
+	data.Title = "SE2 Library"
+	data.Author = "Proudly Served by Gserve1"
+	return &data
+}
+
+//Cell multiple cells in a cell
+type Cell struct {
+	Column    string `json:"column"`
+	Value     string `json:"$"`
+	Timestamp string `json:"timestamp"`
+}
+
+//Row each row
+type Row struct {
+	Key  string `json:"key"`
+	Cell []Cell `json:"Cell"`
+}
+
+//Data multiple rows
+type Data struct {
+	Title   string
+	Author  string
+	RowData []Row `json:"Row"`
 }
 
 func encodeDataForHbase(unencodedJSON []byte) []byte {
