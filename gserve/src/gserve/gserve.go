@@ -15,6 +15,8 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
+var server string = os.Getenv("server")
+
 func createServerNode(flags int32, acl []zk.ACL, c *zk.Conn, serverPath string, server string) {
 	//check for root node
 	exists, stat, err := c.Exists(serverPath)
@@ -31,7 +33,6 @@ func createServerNode(flags int32, acl []zk.ACL, c *zk.Conn, serverPath string, 
 }
 
 func registerToZookeeper() {
-	server := os.Getenv("server")
 	fmt.Println("gserve.registerToZookeeper|Environment server " + server)
 	serverPath := "/" + server
 	c, _, err := zk.Connect([]string{"zookeeper"}, time.Second)
@@ -175,7 +176,8 @@ func loadPage(decodedJSON []byte) *Data {
 	json.Unmarshal(decodedJSON, &data)
 	fmt.Println("Value of data ", data.RowData[0].Key)
 	data.Title = "SE2 Library"
-	data.Author = "Proudly Served by Gserve1"
+	data.Author = "Proudly Served by " + server
+
 	return &data
 }
 
@@ -228,10 +230,17 @@ func requestHandler(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		getLibraryData(w)
 	case "PUT":
+		if r.Body == nil {
+
+		}
 		unencodedJSON, err := ioutil.ReadAll(r.Body)
 		handleError("gserve.requestHandler|Error while reading response data", err)
-		encodedJSON := encodeDataForHbase(unencodedJSON)
-		saveDataToLibrary(encodedJSON)
+		if len(unencodedJSON) > 0 {
+			encodedJSON := encodeDataForHbase(unencodedJSON)
+			saveDataToLibrary(encodedJSON)
+		} else {
+			http.Error(w, "Bad Request.", http.StatusBadRequest)
+		}
 
 	default:
 		http.Error(w, "Sorry, only GET and PUT methods are supported.", http.StatusMethodNotAllowed)
