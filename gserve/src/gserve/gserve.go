@@ -15,14 +15,14 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-func createServerNode(flags int32, acl []zk.ACL, c *zk.Conn, serverPath string) {
+func createServerNode(flags int32, acl []zk.ACL, c *zk.Conn, serverPath string, server string) {
 	//check for root node
 	exists, stat, err := c.Exists(serverPath)
 	handleError("gserve.createServerNode|Error while fetching data for server node", err)
 	fmt.Printf("%+v\n", stat)
 	//create root node
 	if !exists {
-		path, err := c.Create(serverPath, []byte("http://localhost:8081/"), flags, acl)
+		path, err := c.Create(serverPath, []byte("http://"+server+":9002/"), flags, acl)
 		handleError("gserve.createServerNode|Error while registring gserve1 to zookeeper", err)
 		fmt.Printf("gserve.createServerNode|Created the gserver node : %+v\n", path)
 	} else {
@@ -34,12 +34,12 @@ func registerToZookeeper() {
 	server := os.Getenv("server")
 	fmt.Println("gserve.registerToZookeeper|Environment server " + server)
 	serverPath := "/" + server
-	c, _, err := zk.Connect([]string{"127.0.0.1"}, time.Second)
+	c, _, err := zk.Connect([]string{"zookeeper"}, time.Second)
 	handleError("gserve.registerToZookeeper|While connecting to zk", err)
 
 	for c.State() != zk.StateHasSession {
 		fmt.Println("gserve.registerToZookeeper|waiting from zk server")
-		time.Sleep(100000000)
+		time.Sleep(1000000000)
 	}
 	flags := int32(0)
 	acl := zk.WorldACL(zk.PermAll)
@@ -50,14 +50,14 @@ func registerToZookeeper() {
 	handleError("gserve.registerToZookeeper|While fetching data from zk ", err)
 	if !exists {
 		fmt.Println("gserve.RegisterToZookeeper|Node doesnt exists " + serverPath)
-		createServerNode(flags, acl, c, serverPath)
+		createServerNode(flags, acl, c, serverPath, server)
 	} else {
 		fmt.Printf("gserve.registerToZookeeper|Node exists: %+v\n", stat)
 	}
 }
 
 func saveDataToLibrary(encodedJSON []byte) {
-	var hbaseURL = "http://localhost:8080/se2:library/fakerow"
+	var hbaseURL = "http://hbase:8080/se2:library/fakerow"
 	req, err := http.NewRequest("PUT", hbaseURL, bytes.NewBuffer(encodedJSON))
 	handleError("gserve.saveDataToLibrary|Error while creating new http req", err)
 	req.Header.Set("Content-Type", "application/json")
@@ -85,7 +85,7 @@ func decodeDataFromHbase(encodedMarshalledRows []byte) []byte {
 }
 
 func getLibraryData(w http.ResponseWriter) {
-	var hbaseURL = "http://localhost:8080/se2:library/*"
+	var hbaseURL = "http://hbase:8080/se2:library/*"
 	req, err := http.NewRequest("GET", hbaseURL, nil)
 	handleError("gserve.getLibraryData|Error while creating req", err)
 	req.Header.Set("Accept", "application/json")
@@ -104,7 +104,51 @@ func getLibraryData(w http.ResponseWriter) {
 	tplFuncMap := make(template.FuncMap)
 	tplFuncMap["Split"] = Split
 	tplFuncMap["SplitKey"] = SplitKey
-	t := template.Must(template.New("library.tmpl").Funcs(tplFuncMap).ParseFiles("library.tmpl"))
+	t := template.Must(template.New("library.tmpl").Funcs(tplFuncMap).Parse(`<!DOCTYPE html>
+	<html lang="en">
+	<head>
+	  <title>
+	    {{.Title}}
+	  </title>
+	  <body>
+
+	    <div name="library">
+	      {{range .RowData}}
+	              <h3>{{.Key}}</h3>
+	                  {{range $index,$element := .Cell}}
+	                    <h4>{{SplitKey $element.Column}}</h4>
+	                    <div class="wrapper">
+	                                <div class="wrapper">
+	                                  <div class="box">{{Split $element.Column}}</div>
+	                                  <div class="box">{{Split $element.Value}}</div>
+	                                </div>
+	                      </div>
+	                  {{end}}
+	      {{end}}
+
+	    </div>
+	    <footer><i>{{.Author}}</i></footer>
+	  </body>
+	  <style>
+	  body {
+	    margin: 40px;
+	  }
+
+	  .wrapper {
+	    display: grid;
+	    grid-template-columns: 200px 500px 500px;
+	    grid-gap: 50px;
+	    background-color: #fff;
+	  }
+
+	  .box {
+	    border-radius: 5px;
+	    padding: 20px;
+	    font-size: 150%;
+	  }
+	  </style>
+	</html>
+`))
 	handleError("gserve.getLibrary|unable to parse file", err)
 	t.Execute(w, p)
 	defer resp.Body.Close()
@@ -196,8 +240,7 @@ func requestHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	registerToZookeeper()
-
 	http.HandleFunc("/library", requestHandler)
-	log.Fatal(http.ListenAndServe(":8081", nil))
+	log.Fatal(http.ListenAndServe(":9002", nil))
 
 }

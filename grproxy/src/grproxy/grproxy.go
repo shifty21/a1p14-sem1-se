@@ -37,8 +37,13 @@ func getServerAddress(path string, c *zk.Conn) string {
 
 func getGServers() [2]string {
 
-	c, _, err := zk.Connect([]string{"127.0.0.1"}, time.Second)
+	c, _, err := zk.Connect([]string{"zookeeper"}, time.Second)
 	handleError("grproxy.getGServers|Error while connecting to zk", err)
+
+	for c.State() != zk.StateHasSession {
+		fmt.Println("gserve.registerToZookeeper|waiting from zk server")
+		time.Sleep(1000000000)
+	}
 	var servers [2]string
 	servers[0] = getServerAddress("/gserve1", c)
 	servers[1] = getServerAddress("/gserve2", c)
@@ -53,7 +58,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	////////////////////
-	origin, _ := url.Parse("" + "library")
+	origin, _ := url.Parse("http://gserve2:9002/" + "library")
 
 	director := func(req *http.Request) {
 		req.Header.Add("X-Forwarded-Host", req.Host)
@@ -68,7 +73,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 }
 func main() {
 
-	origin, _ := url.Parse("http://localhost:80/")
+	origin, _ := url.Parse("http://nginx:80/")
 
 	director := func(req *http.Request) {
 		req.Header.Add("X-Forwarded-Host", req.Host)
@@ -88,5 +93,5 @@ func main() {
 	getGServers()
 	http.HandleFunc("/library", proxyHandler)
 
-	log.Fatal(http.ListenAndServe(":9002", nil))
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }

@@ -1,9 +1,48 @@
 version: '2'
 services:
         nginx:
-        grproxy:
+             build: ./nginx/
+             container_name: nginx
+             ports:
+                  - 80:80
+             volumes:
+                  - ./nginx/www/:/var/www/nginx
+             networks:
+                  - se_backend
         hbase:
-        gserve1:
-        gserve2:
+             build: ./hbase/
+             container_name: hbase
+             ports:
+                  - 2181:2181
+             networks:
+                  se_backend:
+                      aliases:
+                           - zookeeper
+        grproxy:
+             build: ./grproxy/
+             container_name: grproxy
+             ports:
+                  - 8080:8080
+             networks:
+                  - se_frontend
+                  - se_backend
 
+        gserve1:
+             build: ./gserve/
+             container_name: gserve1
+             environment:
+                 - server=gserve1
+             networks:
+                  - se_backend
+        gserve2:
+             build: ./gserve/
+             container_name: gserve2
+             environment:
+                 - server=gserve2
+             networks:
+                 - se_backend
 networks:
+     se_frontend:
+        driver: bridge
+     se_backend:
+        driver: bridge

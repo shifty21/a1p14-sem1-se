@@ -19,9 +19,9 @@ COPY nginx.conf /etc/nginx/
 RUN cat /etc/nginx/nginx.conf
 
 # Create directory for static content.
-RUN mkdir -p /var/www/nginx
-COPY www /var/www/nginx/
-RUN ls -la /var/www/nginx
+#RUN mkdir -p /var/www/nginx
+#COPY www /var/www/nginx/
+#RUN ls -la /var/www/nginx
 
 # Working directory.
 WORKDIR /etc/nginx
