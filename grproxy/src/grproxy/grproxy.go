@@ -38,7 +38,7 @@ func getServerAddress(path string, c *zk.Conn) string {
 
 }
 
-func getGServers() [2]string {
+func getGServers() {
 
 	c, _, err := zk.Connect([]string{"zookeeper"}, time.Second)
 	handleError("grproxy.getGServers|Error while connecting to zk", err)
@@ -50,7 +50,7 @@ func getGServers() [2]string {
 
 	servers[0] = getServerAddress("/gserve1", c)
 	servers[1] = getServerAddress("/gserve2", c)
-	return servers
+	c.Close()
 }
 
 func proxyHandler(w http.ResponseWriter, r *http.Request) {

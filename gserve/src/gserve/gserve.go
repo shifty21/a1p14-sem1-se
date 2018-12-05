@@ -55,6 +55,7 @@ func registerToZookeeper() {
 	} else {
 		fmt.Printf("gserve.registerToZookeeper|Node exists: %+v\n", stat)
 	}
+	c.Close()
 }
 
 func saveDataToLibrary(encodedJSON []byte) {
