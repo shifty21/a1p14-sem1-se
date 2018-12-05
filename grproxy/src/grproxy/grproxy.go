@@ -11,6 +11,9 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
+var servers [2]string
+var next_server int = 0
+
 func handleError(source string, err error) {
 	if err != nil {
 		fmt.Println("Error from : ", source)
@@ -44,7 +47,7 @@ func getGServers() [2]string {
 		fmt.Println("gserve.registerToZookeeper|waiting from zk server")
 		time.Sleep(1000000000)
 	}
-	var servers [2]string
+
 	servers[0] = getServerAddress("/gserve1", c)
 	servers[1] = getServerAddress("/gserve2", c)
 	return servers
@@ -57,8 +60,8 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
 		return
 	}
-	////////////////////
-	origin, _ := url.Parse("http://gserve2:9002/" + "library")
+
+	origin, _ := url.Parse(servers[next_server] + "library")
 
 	director := func(req *http.Request) {
 		req.Header.Add("X-Forwarded-Host", req.Host)
@@ -69,7 +72,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	proxy := &httputil.ReverseProxy{Director: director}
 	proxy.ServeHTTP(w, r)
-
+	next_server = 1 ^ next_server
 }
 func main() {
 
