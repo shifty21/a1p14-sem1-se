@@ -36,7 +36,11 @@ func registerToZookeeper() {
 	fmt.Println("gserve.registerToZookeeper|Environment server " + server)
 	serverPath := "/" + server
 	c, _, err := zk.Connect([]string{"zookeeper"}, time.Second)
-	handleError("gserve.registerToZookeeper|While connecting to zk", err)
+	if err != nil {
+		time.Sleep(1000000000)
+		fmt.Println("gserve.registerToZookeeper|Error connection to zk server try again!")
+		registerToZookeeper()
+	}
 
 	for c.State() != zk.StateHasSession {
 		fmt.Println("gserve.registerToZookeeper|waiting from zk server")
@@ -86,7 +90,7 @@ func decodeDataFromHbase(encodedMarshalledRows []byte) []byte {
 	return decodedJSON
 }
 
-func getLibraryData(w http.ResponseWriter) {
+func getLibraryData(w http.ResponseWriter, r *http.Request) {
 	var hbaseURL = "http://hbase:8080/se2:library/*"
 	req, err := http.NewRequest("GET", hbaseURL, nil)
 	handleError("gserve.getLibraryData|Error while creating req", err)
@@ -94,7 +98,11 @@ func getLibraryData(w http.ResponseWriter) {
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
-	handleError("gserve.getLibraryData|Error while getting data from hbase", err)
+	if err != nil {
+		fmt.Println("gserve.getLibraryData|Error while getting data from hbase ", server)
+		http.Error(w, "Error while getting data from hbase "+server, http.StatusNotFound)
+		return
+	}
 	encodedMarshalledRows, err := ioutil.ReadAll(resp.Body)
 	handleError("gserve.getLibraryData|Error while reading data from response body", err)
 	decodedJSON := decodeDataFromHbase(encodedMarshalledRows)
@@ -229,18 +237,15 @@ func requestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case "GET":
-		getLibraryData(w)
+		getLibraryData(w, r)
 	case "PUT":
-		if r.Body == nil {
-
-		}
 		unencodedJSON, err := ioutil.ReadAll(r.Body)
 		handleError("gserve.requestHandler|Error while reading response data", err)
 		if len(unencodedJSON) > 0 {
 			encodedJSON := encodeDataForHbase(unencodedJSON)
 			saveDataToLibrary(encodedJSON)
 		} else {
-			http.Error(w, "Bad Request.", http.StatusBadRequest)
+			http.Error(w, "Bad Request to server "+server, http.StatusBadRequest)
 		}
 
 	default:

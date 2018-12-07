@@ -41,7 +41,11 @@ func getServerAddress(path string, c *zk.Conn) string {
 func getGServers() {
 
 	c, _, err := zk.Connect([]string{"zookeeper"}, time.Second)
-	handleError("grproxy.getGServers|Error while connecting to zk", err)
+	if err != nil {
+		time.Sleep(1000000000)
+		fmt.Println("gserve.registerToZookeeper|Error connection to zk server try again!")
+		getGServers()
+	}
 
 	for c.State() != zk.StateHasSession {
 		fmt.Println("gserve.registerToZookeeper|waiting from zk server")
