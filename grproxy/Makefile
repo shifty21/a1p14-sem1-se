@@ -4,4 +4,4 @@ export GOPATH
 default: build
 
 build:
-	go build -tags netgo -v -o ./bin/grproxy ./src/grproxy
+	env GOOS=linux GOARCH=amd64 go build -tags netgo -v -o ./bin/grproxy ./src/grproxy
