@@ -18,8 +18,15 @@ import (
 var server string = os.Getenv("server")
 
 func createServerNode(flags int32, acl []zk.ACL, c *zk.Conn, serverPath string, server string) {
-	//check for root node
-	exists, stat, err := c.Exists(serverPath)
+	exists, stat, err := c.Exists("/grproxy")
+	handleError("vserve.createServerNode|Error while fetching data for server node", err)
+	if !exists {
+		time.Sleep(1000000000)
+		createServerNode(flags, acl, c, serverPath, server)
+	} else {
+		fmt.Printf("gserve.createServerNode|Root node exists %+v\n", stat)
+	}
+	exists, stat, err = c.Exists(serverPath)
 	handleError("gserve.createServerNode|Error while fetching data for server node", err)
 	fmt.Printf("%+v\n", stat)
 	//create root node
@@ -34,7 +41,7 @@ func createServerNode(flags int32, acl []zk.ACL, c *zk.Conn, serverPath string, 
 
 func registerToZookeeper() {
 	fmt.Println("gserve.registerToZookeeper|Environment server " + server)
-	serverPath := "/" + server
+	serverPath := "/grproxy/" + server
 	c, _, err := zk.Connect([]string{"zookeeper"}, time.Second)
 	if err != nil {
 		time.Sleep(1000000000)
@@ -46,20 +53,13 @@ func registerToZookeeper() {
 		fmt.Println("gserve.registerToZookeeper|waiting from zk server")
 		time.Sleep(1000000000)
 	}
-	flags := int32(0)
+	flags := int32(zk.FlagEphemeral)
 	acl := zk.WorldACL(zk.PermAll)
 
 	fmt.Println("gserve.registerToZookeeper|Check if " + serverPath + " is available or not")
 
-	exists, stat, err := c.Exists(serverPath)
-	handleError("gserve.registerToZookeeper|While fetching data from zk ", err)
-	if !exists {
-		fmt.Println("gserve.RegisterToZookeeper|Node doesnt exists " + serverPath)
-		createServerNode(flags, acl, c, serverPath, server)
-	} else {
-		fmt.Printf("gserve.registerToZookeeper|Node exists: %+v\n", stat)
-	}
-	c.Close()
+	createServerNode(flags, acl, c, serverPath, server)
+	// c.Close()
 }
 
 func saveDataToLibrary(encodedJSON []byte) {
@@ -231,6 +231,13 @@ func handleError(source string, err error) {
 }
 
 func requestHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+	w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	if r.URL.Path != "/library" {
 		http.Error(w, "Redirecting to home page!", http.StatusNotFound)
 		return
@@ -256,6 +263,7 @@ func requestHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	registerToZookeeper()
 	http.HandleFunc("/library", requestHandler)
+	http.HandleFunc("/", requestHandler)
 	log.Fatal(http.ListenAndServe(":9002", nil))
 
 }

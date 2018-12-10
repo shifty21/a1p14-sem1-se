@@ -11,8 +11,18 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-var servers [2]string
-var next_server int = 0
+var servers []string
+
+var nextServer int
+
+func getNextServer() int {
+	if nextServer >= len(servers) {
+		nextServer = 0
+	} else {
+		nextServer = nextServer + 1
+	}
+	return nextServer
+}
 
 func handleError(source string, err error) {
 	if err != nil {
@@ -38,67 +48,132 @@ func getServerAddress(path string, c *zk.Conn) string {
 
 }
 
-func getGServers() {
+func createRootNode(flags int32, acl []zk.ACL, c *zk.Conn) {
+	//check for root node
+	exists, stat, err := c.Exists("/grproxy")
+	handleError("gserve.createRootNode|Error while checking for rootnode", err)
 
+	//create root node
+	if !exists {
+		path, err := c.Create("/grproxy", []byte("root"), flags, acl)
+		handleError("gserve.createRootNode|Error while creating root node!", err)
+
+		fmt.Printf("gserve.createRootNode|root node created at %+v \n", path)
+	} else {
+		fmt.Printf("gserve.createRootNode|root node exists: %+v %+v \n", exists, stat)
+	}
+
+}
+
+func getZkConnection() (flags int32, acl []zk.ACL, c *zk.Conn) {
 	c, _, err := zk.Connect([]string{"zookeeper"}, time.Second)
 	if err != nil {
 		time.Sleep(1000000000)
-		fmt.Println("gserve.registerToZookeeper|Error connection to zk server try again!")
-		getGServers()
+		fmt.Println("gserve.getZkConnection|Error connection to zk server try again!")
+		getZkConnection()
 	}
 
 	for c.State() != zk.StateHasSession {
-		fmt.Println("gserve.registerToZookeeper|waiting from zk server")
+		fmt.Println("gserve.getZkConnection|waiting from zk server")
 		time.Sleep(1000000000)
 	}
-
-	servers[0] = getServerAddress("/gserve1", c)
-	servers[1] = getServerAddress("/gserve2", c)
-	c.Close()
+	flags = int32(0)
+	acl = zk.WorldACL(zk.PermAll)
+	fmt.Println("gserve.getZkConnection|connected to zk returning")
+	return flags, acl, c
 }
 
-func proxyHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-	w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
-	if r.Method == "OPTIONS" {
-		return
-	}
+func getGServers(c *zk.Conn) (chan []string, chan error) {
+	fmt.Println("gserve.getGServers|getting active gserve nodes from zk")
+	serverChan := make(chan []string)
+	errors := make(chan error)
+	go func() {
+		for {
+			children, _, events, err := c.ChildrenW("/grproxy")
+			if err != nil {
+				errors <- err
+				return
+			}
+			serverChan <- children
+			evt := <-events
+			if evt.Err != nil {
+				errors <- evt.Err
+				return
+			}
+		}
+	}()
+	fmt.Println("gserve.getGServers|got active gserve nodes from zk ")
+	return serverChan, errors
+}
 
-	origin, _ := url.Parse(servers[next_server] + "library")
+//
+// func proxyHandler(w http.ResponseWriter, r *http.Request) {
+// 	w.Header().Set("Access-Control-Allow-Origin", "*")
+// 	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+// 	w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+// 	if r.Method == "OPTIONS" {
+// 		return
+// 	}
+//
+// 	origin, _ := url.Parse(servers[next_server] + "library")
+//
+// 	director := func(req *http.Request) {
+// 		req.Header.Add("X-Forwarded-Host", req.Host)
+// 		req.Header.Add("X-Origin-Host", origin.Host)
+// 		req.URL.Scheme = "http"
+// 		req.URL.Host = origin.Host
+// 	}
+//
+// 	proxy := &httputil.ReverseProxy{Director: director}
+// 	proxy.ServeHTTP(w, r)
+// 	next_server = 1 ^ next_server
+// }
 
+//NewMultiHostReverseProxy handles url path and return appropriate director to handle req
+func NewMultiHostReverseProxy() *httputil.ReverseProxy {
+	scheme := "http"
 	director := func(req *http.Request) {
-		req.Header.Add("X-Forwarded-Host", req.Host)
-		req.Header.Add("X-Origin-Host", origin.Host)
-		req.URL.Scheme = "http"
-		req.URL.Host = origin.Host
-	}
+		if req.URL.Path == "/library" {
+			fmt.Printf("grproxy.NewMultipleHostReverseProxy|req.url %v", req.URL)
+			fmt.Printf("grproxy.NewMultipleHostReverseProxy|nextServer %v", getNextServer())
+			origin, _ := url.Parse(servers[0] + "library")
+			req.URL.Scheme = scheme
+			req.URL.Host = origin.Host
+		} else {
+			fmt.Println("grproxy.NewMultipleHostReverseProxy|redirecting to home Page")
+			req.URL.Scheme = scheme
+			req.URL.Host = "nginx"
+		}
 
-	proxy := &httputil.ReverseProxy{Director: director}
-	proxy.ServeHTTP(w, r)
-	next_server = 1 ^ next_server
+	}
+	return &httputil.ReverseProxy{Director: director}
 }
 func main() {
+	flags, acl, c := getZkConnection()
+	createRootNode(flags, acl, c)
+	serverChan, errors := getGServers(c)
+	go func() {
+		for {
+			select {
 
-	origin, _ := url.Parse("http://nginx:80/")
+			case children := <-serverChan:
+				fmt.Printf("grproxy.main|children --- %+v\n", children)
+				var temp []string
+				for _, child := range children {
+					gserveURLs, _, err := c.Get("/grproxy/" + child)
+					temp = append(temp, string(gserveURLs))
+					if err != nil {
+						fmt.Printf("grproxy.main|from child: %+v\n", err)
+					}
+				}
+				servers = temp
+				fmt.Printf("grproxy.main| %+v \n", servers)
+			case err := <-errors:
+				fmt.Printf("grproxy.main| %+v \n", err)
+			}
+		}
+	}()
 
-	director := func(req *http.Request) {
-		req.Header.Add("X-Forwarded-Host", req.Host)
-		req.Header.Add("X-Origin-Host", origin.Host)
-		req.URL.Scheme = "http"
-		req.URL.Host = origin.Host
-	}
-
-	proxy := &httputil.ReverseProxy{Director: director}
-
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-		proxy.ServeHTTP(w, r)
-		fmt.Printf("grproxy.main|Redirecting to homepage")
-	})
-	getGServers()
-	http.HandleFunc("/library", proxyHandler)
-
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	proxy := NewMultiHostReverseProxy()
+	log.Fatal(http.ListenAndServe(":8080", proxy))
 }

@@ -86,7 +86,7 @@ $( "form" ).submit(function( event ) {
 	$(".kvdata").each(set_kv)
 
 	$.ajax({
-		url: 'http://localhost:8080/library',
+		url: 'http://localhost:80/library',
 		type: 'PUT',
 		contentType: 'application/json',
 		dataType: 'text',
