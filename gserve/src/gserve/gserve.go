@@ -80,10 +80,12 @@ func saveDataToLibrary(encodedJSON []byte) {
 
 func decodeDataFromHbase(encodedMarshalledRows []byte) []byte {
 	var encodedRowsType EncRowsType
+	fmt.Printf("gserve.encodedMarshalledRows| encodedmarshalled rows %v \n", encodedMarshalledRows)
 	err := json.Unmarshal(encodedMarshalledRows, &encodedRowsType)
 	handleError("gserve.decodeDatFromHbase|Error while unmarshalling data", err)
 	decodedRows, err := encodedRowsType.decode()
 	handleError("gserve.decodeDatFromHbase|Error while decoding rows", err)
+	fmt.Printf("gserve.decodeDataFromHbase|decodedJSON: %v \n", decodedRows)
 	decodedJSON, err := json.Marshal(decodedRows)
 	handleError("gserve.decodeDatFromHbase|Error while marshalling data", err)
 	fmt.Println("gserve.decodeDataFromHbase|decodedJSON: " + string(decodedJSON))
@@ -91,19 +93,35 @@ func decodeDataFromHbase(encodedMarshalledRows []byte) []byte {
 }
 
 func getLibraryData(w http.ResponseWriter, r *http.Request) {
-	var hbaseURL = "http://hbase:8080/se2:library/*"
-	req, err := http.NewRequest("GET", hbaseURL, nil)
+
+	var hbaseURL = "http://hbase:8080/se2:library/scanner"
+	//get scanner url from hbase
+	body := strings.NewReader("<Scanner batch=\"10\"/>")
+	scannerReq, err := http.NewRequest(http.MethodPut, hbaseURL, body)
 	handleError("gserve.getLibraryData|Error while creating req", err)
-	req.Header.Set("Accept", "application/json")
+	scannerReq.Header.Set("Content-Type", "text/xml")
+	scannerReq.Header.Set("Accept", "text/plain")
+	scannerReq.Header.Set("Accept-Encoding", "identity")
 
 	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := client.Do(scannerReq)
 	if err != nil {
 		fmt.Println("gserve.getLibraryData|Error while getting data from hbase ", server)
 		http.Error(w, "Error while getting data from hbase "+server, http.StatusNotFound)
 		return
 	}
-	encodedMarshalledRows, err := ioutil.ReadAll(resp.Body)
+	fmt.Printf("gserve.getLibraryData|body, %v \n", resp)
+	dataURL, _ := resp.Location()
+	defer scannerReq.Body.Close()
+	fmt.Println("gserve.getLibraryData|locationURL, ", dataURL)
+	dataReq, err := http.NewRequest(http.MethodGet, dataURL.String(), nil)
+	dataReq.Header.Set("Accept", "application/json")
+
+	handleError("gserve.getLibraryData|error while creating req from scanner url", err)
+	dataResp, err := client.Do(dataReq)
+	handleError("gserve.getLibraryData|error while getting data from scanner url", err)
+
+	encodedMarshalledRows, err := ioutil.ReadAll(dataResp.Body)
 	handleError("gserve.getLibraryData|Error while reading data from response body", err)
 	decodedJSON := decodeDataFromHbase(encodedMarshalledRows)
 	fmt.Println("gserve.getLibraryData|decodedJSON: ", decodedJSON)
@@ -118,12 +136,12 @@ func getLibraryData(w http.ResponseWriter, r *http.Request) {
 	<html lang="en">
 	<head>
 	  <title>
-	    {{.Title}}
+	    SE2 Library
 	  </title>
 	  <body>
 
 	    <div name="library">
-	      {{range .RowData}}
+	      {{range .Row}}
 	              <h3>{{.Key}}</h3>
 	                  {{range $index,$element := .Cell}}
 	                    <h4>{{SplitKey $element.Column}}</h4>
@@ -137,7 +155,7 @@ func getLibraryData(w http.ResponseWriter, r *http.Request) {
 	      {{end}}
 
 	    </div>
-	    <footer><i>{{.Author}}</i></footer>
+	    <footer><i>` + "Proudly Serverd by " + server + ` </i></footer>
 	  </body>
 	  <style>
 	  body {
@@ -179,47 +197,28 @@ func SplitKey(s string) string {
 
 //{"Row":[{"key":"1","Cell":[{"column":"document:sample","$":"value:samplevalue","timestamp":1543701034821},
 //{"column":"metadata:meta","$":"value:samplemeta","timestamp":1543701034821}]}]}
-func loadPage(decodedJSON []byte) *Data {
-	var data Data
-	fmt.Println("Value of decodedJSON : ", decodedJSON)
+func loadPage(decodedJSON []byte) *EncRowsType {
+	// var data Data
+	var data EncRowsType
+	fmt.Println("gserve.loadPage|Value of decodedJSON : ", decodedJSON)
 	json.Unmarshal(decodedJSON, &data)
-	fmt.Println("Value of data ", data.RowData[0].Key)
-	data.Title = "SE2 Library"
-	data.Author = "Proudly Served by " + server
+	fmt.Printf("gserve.loadPage|Value of data %v \n", data)
+	// data.Title = "SE2 Library"
+	// data.Author = "Proudly Served by " + server
 
 	return &data
-}
-
-//Cell multiple cells in a cell
-type Cell struct {
-	Column    string `json:"column"`
-	Value     string `json:"$"`
-	Timestamp string `json:"timestamp"`
-}
-
-//Row each row
-type Row struct {
-	Key  string `json:"key"`
-	Cell []Cell `json:"Cell"`
-}
-
-//Data multiple rows
-type Data struct {
-	Title   string
-	Author  string
-	RowData []Row `json:"Row"`
 }
 
 func encodeDataForHbase(unencodedJSON []byte) []byte {
 	var unencodedRows RowsType
 	err := json.Unmarshal(unencodedJSON, &unencodedRows)
-	handleError("gserve.getLibraryData|Error while unmarshalling data", err)
+	handleError("gserve.encodeDataForHbase|Error while unmarshalling data", err)
 	fmt.Println("gserve.encodeDataForHbase|UnencodedJSON", string(unencodedJSON))
 	encodedRows := unencodedRows.encode()
 	encodedJSON, err := json.Marshal(encodedRows)
-	handleError("gserve.getLibraryData|Error while marshalling data", err)
-	fmt.Println("gserve.getLibraryData|Unencoded:", string(unencodedJSON))
-	fmt.Println("gserve.getLibraryData|Encoded:", string(encodedJSON))
+	handleError("gserve.encodeDataForHbase|Error while marshalling data", err)
+	fmt.Println("gserve.encodeDataForHbase|Unencoded:", string(unencodedJSON))
+	fmt.Println("gserve.encodeDataForHbase|Encoded:", string(encodedJSON))
 	return encodedJSON
 }
 
