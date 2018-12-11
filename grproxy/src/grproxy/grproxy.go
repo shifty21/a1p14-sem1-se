@@ -13,13 +13,13 @@ import (
 
 var servers []string
 
-var nextServer int
+var nextServer = -1
 
 func getNextServer() int {
+	nextServer = nextServer + 1
+	fmt.Printf("grproxy.getNextServer|current server %v \n", nextServer)
 	if nextServer >= len(servers) {
 		nextServer = 0
-	} else {
-		nextServer = nextServer + 1
 	}
 	return nextServer
 }
@@ -106,37 +106,15 @@ func getGServers(c *zk.Conn) (chan []string, chan error) {
 	return serverChan, errors
 }
 
-//
-// func proxyHandler(w http.ResponseWriter, r *http.Request) {
-// 	w.Header().Set("Access-Control-Allow-Origin", "*")
-// 	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-// 	w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
-// 	if r.Method == "OPTIONS" {
-// 		return
-// 	}
-//
-// 	origin, _ := url.Parse(servers[next_server] + "library")
-//
-// 	director := func(req *http.Request) {
-// 		req.Header.Add("X-Forwarded-Host", req.Host)
-// 		req.Header.Add("X-Origin-Host", origin.Host)
-// 		req.URL.Scheme = "http"
-// 		req.URL.Host = origin.Host
-// 	}
-//
-// 	proxy := &httputil.ReverseProxy{Director: director}
-// 	proxy.ServeHTTP(w, r)
-// 	next_server = 1 ^ next_server
-// }
-
 //NewMultiHostReverseProxy handles url path and return appropriate director to handle req
 func NewMultiHostReverseProxy() *httputil.ReverseProxy {
 	scheme := "http"
 	director := func(req *http.Request) {
 		if req.URL.Path == "/library" {
-			fmt.Printf("grproxy.NewMultipleHostReverseProxy|req.url %v", req.URL)
-			fmt.Printf("grproxy.NewMultipleHostReverseProxy|nextServer %v", getNextServer())
-			origin, _ := url.Parse(servers[0] + "library")
+			fmt.Printf("grproxy.NewMultipleHostReverseProxy|req.url %v\n", req.URL)
+			current := getNextServer()
+			fmt.Printf("grproxy.NewMultipleHostReverseProxy|current server %v\n", current)
+			origin, _ := url.Parse(servers[current] + "library")
 			req.URL.Scheme = scheme
 			req.URL.Host = origin.Host
 		} else {
