@@ -3,8 +3,6 @@ services:
         nginx:
              build: ./nginx/
              container_name: nginx
-             ports:
-                  - 80:80
              volumes:
                   - ./nginx/www/:/var/www/nginx
              networks:
@@ -22,7 +20,7 @@ services:
              build: ./grproxy/
              container_name: grproxy
              ports:
-                  - 8080:8080
+                  - 80:8080
              networks:
                   - se_frontend
                   - se_backend

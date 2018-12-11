@@ -43,7 +43,7 @@ func getServerAddress(path string, c *zk.Conn) string {
 	}
 	data, _, err := c.Get(path)
 	handleError("grproxy.getServerAddress|Error while getting address for "+path, err)
-	fmt.Printf("grproxy.getGServers|getting path for "+path+" : %s\n", string(data))
+	fmt.Printf("grproxy.getServerAddress|getting path for "+path+" : %s\n", string(data))
 	return string(data)
 
 }

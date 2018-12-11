@@ -20,7 +20,7 @@ var server string = os.Getenv("server")
 
 func createServerNode(flags int32, acl []zk.ACL, c *zk.Conn, serverPath string, server string) {
 	exists, stat, err := c.Exists("/grproxy")
-	handleError("vserve.createServerNode|Error while fetching data for server node", err)
+	handleError("gserve.createServerNode|Error while fetching data for server node", err)
 	if !exists {
 		time.Sleep(1000000000)
 		createServerNode(flags, acl, c, serverPath, server)
@@ -29,7 +29,7 @@ func createServerNode(flags int32, acl []zk.ACL, c *zk.Conn, serverPath string, 
 	}
 	exists, stat, err = c.Exists(serverPath)
 	handleError("gserve.createServerNode|Error while fetching data for server node", err)
-	fmt.Printf("%+v\n", stat)
+	fmt.Printf("gserve.createServerNode| stat %v \n", stat)
 	//create root node
 	if !exists {
 		path, err := c.Create(serverPath, []byte("http://"+server+":9002/"), flags, acl)
@@ -57,8 +57,6 @@ func registerToZookeeper() {
 	flags := int32(zk.FlagEphemeral)
 	acl := zk.WorldACL(zk.PermAll)
 
-	fmt.Println("gserve.registerToZookeeper|Check if " + serverPath + " is available or not")
-
 	createServerNode(flags, acl, c, serverPath, server)
 }
 
@@ -80,42 +78,53 @@ func saveDataToLibrary(encodedJSON []byte) {
 	fmt.Println("gserve.saveDataToLibrary|Response ", body)
 }
 
-func decodeDataFromHbase(encodedMarshalledRows []byte) []byte {
-	var encodedRowsType EncRowsType
-	fmt.Printf("gserve.encodedMarshalledRows| encodedmarshalled rows %v \n", encodedMarshalledRows)
-	err := json.Unmarshal(encodedMarshalledRows, &encodedRowsType)
-	handleError("gserve.decodeDatFromHbase|Error while unmarshalling data", err)
-
-	decodedRows, err := encodedRowsType.decode()
-	handleError("gserve.decodeDatFromHbase|Error while decoding rows", err)
-	fmt.Printf("gserve.decodeDataFromHbase|decodedJSON: %v \n", decodedRows)
-
-	decodedJSON, err := json.Marshal(decodedRows)
-	handleError("gserve.decodeDatFromHbase|Error while marshalling data", err)
-	fmt.Println("gserve.decodeDataFromHbase|decodedJSON: " + string(decodedJSON))
-	return decodedJSON
-}
-
 func getHbaseDataURL(client *http.Client) *url.URL {
 	var hbaseURL = "http://hbase:8080/se2:library/scanner"
 	//get scanner url from hbase
 	body := strings.NewReader("<Scanner batch=\"10\"/>")
 	scannerReq, err := http.NewRequest(http.MethodPut, hbaseURL, body)
-	handleError("gserve.getLibraryData|Error while creating req", err)
+	handleError("gserve.getHbaseDataURL|Error while creating req", err)
 	scannerReq.Header.Set("Content-Type", "text/xml")
 	scannerReq.Header.Set("Accept", "text/plain")
 	scannerReq.Header.Set("Accept-Encoding", "identity")
 
 	resp, err := client.Do(scannerReq)
 	if err != nil {
-		fmt.Println("gserve.getLibraryData|Error while getting data from hbase ", server)
+		fmt.Println("gserve.getHbaseDataURL|Error while getting data from hbase ", server)
 	}
-	fmt.Printf("gserve.getLibraryData|body, %v \n", resp)
+	fmt.Printf("gserve.getHbaseDataURL|body, %v \n", resp)
 	dataURL, _ := resp.Location()
 	defer scannerReq.Body.Close()
 	return dataURL
 
 }
+
+func loadPage(decodedJSON []byte) *EncRowsType {
+
+	var data EncRowsType
+	fmt.Println("gserve.loadPage|Value of decodedJSON : ", decodedJSON)
+	json.Unmarshal(decodedJSON, &data)
+	fmt.Printf("gserve.loadPage|Value of data %v \n", data)
+
+	return &data
+}
+
+func decodeDataFromHbase(encodedMarshalledRows []byte) []byte {
+	var encodedRowsType EncRowsType
+	err := json.Unmarshal(encodedMarshalledRows, &encodedRowsType)
+	handleError("gserve.decodeDataFromHbase|Error while unmarshalling data", err)
+
+	decodedRows, err := encodedRowsType.decode()
+	handleError("gserve.decodeDataFromHbase|Error while decoding rows", err)
+	fmt.Printf("gserve.decodeDataFromHbase|decodedJSON: %v \n", decodedRows)
+
+	decodedJSON, err := json.Marshal(decodedRows)
+
+	handleError("gserve.decodeDataFromHbase|Error while marshalling data", err)
+	fmt.Println("gserve.decodeDataFromHbase|decodedMarshalledJSON: " + string(decodedJSON))
+	return decodedJSON
+}
+
 func getLibraryData(w http.ResponseWriter, r *http.Request) {
 	client := &http.Client{}
 	dataURL := getHbaseDataURL(client)
@@ -200,16 +209,6 @@ func Split(s string) string {
 func SplitKey(s string) string {
 	arr := strings.Split(s, ":")
 	return strings.Title(arr[0])
-}
-
-func loadPage(decodedJSON []byte) *EncRowsType {
-
-	var data EncRowsType
-	fmt.Println("gserve.loadPage|Value of decodedJSON : ", decodedJSON)
-	json.Unmarshal(decodedJSON, &data)
-	fmt.Printf("gserve.loadPage|Value of data %v \n", data)
-
-	return &data
 }
 
 func encodeDataForHbase(unencodedJSON []byte) []byte {
