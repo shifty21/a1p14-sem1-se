@@ -12,6 +12,7 @@ services:
              container_name: hbase
              ports:
                   - 2181:2181
+                  - 8080:8080
              networks:
                   se_backend:
                       aliases:
