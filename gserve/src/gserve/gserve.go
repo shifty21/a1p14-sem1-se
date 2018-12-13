@@ -81,7 +81,7 @@ func saveDataToLibrary(encodedJSON []byte) {
 func getHbaseDataURL(client *http.Client) *url.URL {
 	var hbaseURL = "http://hbase:8080/se2:library/scanner"
 	//get scanner url from hbase
-	body := strings.NewReader("<Scanner batch=\"10\"/>")
+	body := strings.NewReader("<Scanner batch=\"100\"/>")
 	scannerReq, err := http.NewRequest(http.MethodPut, hbaseURL, body)
 	handleError("gserve.getHbaseDataURL|Error while creating req", err)
 	scannerReq.Header.Set("Content-Type", "text/xml")
