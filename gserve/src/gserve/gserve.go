@@ -246,7 +246,7 @@ func requestHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
 		getLibraryData(w, r)
-	case "PUT":
+	case "PUT", "POST":
 		unencodedJSON, err := ioutil.ReadAll(r.Body)
 		handleError("gserve.requestHandler|Error while reading response data", err)
 		if len(unencodedJSON) > 0 {

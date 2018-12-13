@@ -87,7 +87,7 @@ $( "form" ).submit(function( event ) {
 
 	$.ajax({
 		url: 'http://localhost:80/library',
-		type: 'PUT',
+		type: 'POST',
 		contentType: 'application/json',
 		dataType: 'text',
 		data: JSON.stringify(data)
